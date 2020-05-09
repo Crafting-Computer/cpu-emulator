@@ -73,19 +73,24 @@ styles =
 
 init : Model
 init =
-  { computer =
-    { aRegister = 0
-    , dRegister = 0
-    , mRegister = 0
-    , pc = 0
-    , rom = Array.fromList
+  let
+    program =
       [ "@2"
-      , "D=A"
+      , "D=A-2"
       , "@3"
       , "D=D+A"
       , "@0"
       , "M=D"
       ]
+  in
+  { computer =
+    { aRegister = 0
+    , dRegister = 0
+    , mRegister = 0
+    , pc = 0
+    , rom = Array.append
+      (Array.fromList program)
+      (Array.repeat (2 ^ 20 - List.length program) "")
     , ram = Array.repeat (2 ^ 21) 0
     , errorMessage = Nothing
     }
@@ -107,18 +112,6 @@ view model =
         [ E.spacing 20
         , E.alignTop
         ]
-        [ viewROM model.computer
-        , E.column
-          [ E.width E.fill
-          , E.spacing 10
-          ]
-          [ viewRegister "PC" model.computer.pc
-          , viewStepControl model.computer
-          ]
-        ]
-      , E.column
-        [ E.spacing 20
-        ]
         [ viewRAM model.computer
         , E.column
           [ E.width E.fill
@@ -127,6 +120,20 @@ view model =
           [ viewRegister "A" model.computer.aRegister
           , viewRegister "D" model.computer.dRegister
           , viewRegister "M" model.computer.mRegister
+          ]
+        ]
+      , E.column
+        [ E.spacing 20
+        , E.alignTop
+        ]
+        [ viewROM model.computer
+        , E.column
+          [ E.width E.fill
+          , E.spacing 10
+          ]
+          [ viewRegister "PC" model.computer.pc
+          , viewStepControl model.computer
+          , viewAssemblerErrorMessage model.computer.errorMessage
           ]
         ]
       ]
@@ -169,6 +176,7 @@ viewROM computer =
                   (cellStyle
                   ++ [ E.paddingXY 10 0
                   , Border.width 1
+                  , E.height <| E.px 22
                   ])
                   <|
                   E.text cell
@@ -248,6 +256,19 @@ viewStepControl computer =
         E.text ">"
       }
     ]
+
+
+viewAssemblerErrorMessage : Maybe String -> E.Element Msg
+viewAssemblerErrorMessage errorMessage =
+  case errorMessage of
+    Nothing ->
+      E.none
+    
+    Just msg ->
+      E.el
+      [ E.width <| E.px 30 -- used to make sure other elements' widths are not expanded
+      ]
+      <| E.text <| "❌ " ++ msg
 
 
 update : Msg -> Model -> Model
