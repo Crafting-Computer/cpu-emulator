@@ -44,7 +44,7 @@ type alias Computer =
   , pc : Int
   , ram : Array Int
   , rom : Array String
-  , errorMessage : Maybe String
+  , error : Maybe (Int, String)
   }
 
 
@@ -63,6 +63,8 @@ colors =
     E.rgb255 220 220 220
   , darkGrey =
     E.rgb255 200 200 200
+  , lightOrange =
+    E.rgb255 255 165 0
   }
 
 
@@ -97,7 +99,7 @@ init =
       (Array.fromList program)
       (Array.repeat (2 ^ 20 - List.length program) "")
     , ram = Array.repeat (2 ^ 21) 0
-    , errorMessage = Nothing
+    , error = Nothing
     }
   , editingInstructionIndex =
     Nothing
@@ -140,7 +142,7 @@ view model =
           ]
           [ viewRegister "PC" model.computer.pc
           , viewStepControl model.computer
-          , viewAssemblerErrorMessage model.computer.errorMessage
+          , viewAssemblerErrorMessage model.computer.error
           ]
         ]
       ]
@@ -179,12 +181,27 @@ viewROM model =
                       ]
 
                     cellStyle =
-                      if index == model.computer.pc then
-                        commonStyle
-                        ++ [ Background.color colors.lightGreen
-                        ]
-                      else
-                        commonStyle
+                      ( if index == model.computer.pc then
+                          commonStyle
+                          ++ [ Background.color colors.lightGreen
+                          ]
+                        else
+                          commonStyle
+                      )
+                      |>
+                      (\previousStyle ->
+                        case model.computer.error of
+                          Nothing ->
+                            previousStyle
+                          
+                          Just (location, _) ->
+                            if location == index then
+                              previousStyle
+                              ++ [ Background.color colors.lightOrange
+                              ]
+                            else
+                              previousStyle
+                      )
 
                     isEditing =
                       case model.editingInstructionIndex of
@@ -293,13 +310,13 @@ viewStepControl computer =
     ]
 
 
-viewAssemblerErrorMessage : Maybe String -> E.Element Msg
+viewAssemblerErrorMessage : Maybe (Int, String) -> E.Element Msg
 viewAssemblerErrorMessage errorMessage =
   case errorMessage of
     Nothing ->
       E.none
     
-    Just msg ->
+    Just (_, msg) ->
       E.el
       [ E.width <| E.px 30 -- used to make sure other elements' widths are not expanded
       ]
@@ -363,20 +380,20 @@ step computer =
       case Assembler.assembleInstruction computer.pc instructionStr of
         Err err ->
           { computer
-            | errorMessage =
-              Just err
+            | error =
+              Just <| (computer.pc, err)
           }
         
         Ok instruction ->
           let
             computer1 =
-              case computer.errorMessage of
+              case computer.error of
                 Nothing ->
                   computer
                 
                 Just _ ->
                   { computer
-                    | errorMessage =
+                    | error =
                       Nothing
                   }
 
