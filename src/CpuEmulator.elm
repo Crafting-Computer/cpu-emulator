@@ -11,16 +11,21 @@ import Element as E
 import Element.Input as Input
 import Element.Background as Background
 import Element.Border as Border
+import Element.Events as Events
 import Assembler
 
 
 type alias Model =
   { computer : Computer
+  , editingInstructionIndex : Maybe Int
   }
 
 
 type Msg
   = StepComputer
+  | StartEditingInstruction Int
+  | EditInstruction Int String
+  | StopEditingInstruction Int
 
 
 main : Program () Model Msg
@@ -94,6 +99,8 @@ init =
     , ram = Array.repeat (2 ^ 21) 0
     , errorMessage = Nothing
     }
+  , editingInstructionIndex =
+    Nothing
   }
 
 
@@ -126,7 +133,7 @@ view model =
         [ E.spacing 20
         , E.alignTop
         ]
-        [ viewROM model.computer
+        [ viewROM model
         , E.column
           [ E.width E.fill
           , E.spacing 10
@@ -139,11 +146,11 @@ view model =
       ]
 
 
-viewROM : Computer -> E.Element Msg
-viewROM computer =
+viewROM : Model -> E.Element Msg
+viewROM model =
   let
     instructionData =
-      Array.toList <| Array.slice 0 28 computer.rom
+      Array.toList <| Array.slice 0 28 model.computer.rom
   in
   E.column
     [ E.width <| E.px 200
@@ -165,21 +172,49 @@ viewROM computer =
             , view =
                 \index cell ->
                   let
+                    commonStyle =
+                      [ E.paddingXY 10 0
+                      , Border.width 1
+                      , E.height <| E.px 22
+                      ]
+
                     cellStyle =
-                      if index == computer.pc then
-                        [ Background.color colors.lightGreen
+                      if index == model.computer.pc then
+                        commonStyle
+                        ++ [ Background.color colors.lightGreen
                         ]
                       else
-                        []
+                        commonStyle
+
+                    isEditing =
+                      case model.editingInstructionIndex of
+                        Nothing ->
+                          False
+                        
+                        Just editingIndex ->
+                          index == editingIndex
                   in
-                  E.el
-                  (cellStyle
-                  ++ [ E.paddingXY 10 0
-                  , Border.width 1
-                  , E.height <| E.px 22
-                  ])
-                  <|
-                  E.text cell
+                  E.el cellStyle <|
+                  if isEditing then
+                    Input.text
+                      (cellStyle
+                      ++ [ Events.onLoseFocus <| StopEditingInstruction index
+                      ])
+                      { onChange =
+                        EditInstruction index
+                      , text =
+                        cell
+                      , placeholder =
+                        Nothing
+                      , label =
+                        Input.labelHidden "edit instruction"
+                      }
+                  else
+                    E.el
+                    [ Events.onClick <| StartEditingInstruction index
+                    , E.width E.fill
+                    ] <|
+                    E.text cell
             }
           ]
       }
@@ -280,25 +315,71 @@ update msg model =
           step model.computer
       }
 
+    StartEditingInstruction index ->
+      startEditingInstruction index model
+
+    EditInstruction index newInstruction ->
+      editInstruction index newInstruction model
+
+    StopEditingInstruction index ->
+      stopEditingInstruction index model
+
+
+stopEditingInstruction : Int -> Model -> Model
+stopEditingInstruction index model =
+  { model
+    | editingInstructionIndex =
+      Nothing
+  }
+
+
+editInstruction : Int -> String -> Model -> Model
+editInstruction index newInstruction model =
+  let
+    oldComputer =
+      model.computer
+  in
+  { model
+    | computer =
+      { oldComputer
+        | rom =
+          Array.set index newInstruction oldComputer.rom
+      }
+  }
+
+
+startEditingInstruction : Int -> Model -> Model
+startEditingInstruction index model =
+  { model
+    | editingInstructionIndex =
+      Just index
+  }
+
 
 step : Computer -> Computer
 step computer =
   case Array.get computer.pc computer.rom of
     Just instructionStr ->
-      case Assembler.assemble instructionStr of
+      case Assembler.assembleInstruction computer.pc instructionStr of
         Err err ->
           { computer
             | errorMessage =
-              Just <| err
+              Just err
           }
         
         Ok instruction ->
           let
-            -- complementedInstruction =
-            --   if instruction < 0 then
-            --     2 ^ 32 + instruction
-            --   else
-            --     instruction
+            computer1 =
+              case computer.errorMessage of
+                Nothing ->
+                  computer
+                
+                Just _ ->
+                  { computer
+                    | errorMessage =
+                      Nothing
+                  }
+
             instructionBinary =
               Binary.fromIntegers <| List.map (Maybe.withDefault 0 << String.toInt) <| String.split "" instruction
             
@@ -307,13 +388,13 @@ step computer =
           in
           case instructionBits of
             [] ->
-              computer
+              computer1
             
             opCode :: _ ->
               if not opCode then
-                stepAInstruction (Binary.toDecimal instructionBinary) computer
+                stepAInstruction (Binary.toDecimal instructionBinary) computer1
               else
-                stepCInstruction (List.drop 19 instructionBits) computer
+                stepCInstruction (List.drop 19 instructionBits) computer1
     
     Nothing ->
       computer
