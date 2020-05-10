@@ -104,6 +104,7 @@
     app.ports.showProgramEditorPort.subscribe(function() {
       console.log("showProgramEditorPort");
       document.getElementById("editor").style.top = "10px";
+      editor.focus();
     });
 
     app.ports.hideProgramEditorPort.subscribe(function() {
