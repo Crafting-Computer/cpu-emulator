@@ -16,6 +16,7 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Events as Events
 import Element.Font as Font
+import FeatherIcons
 import Assembler
 
 
@@ -194,13 +195,13 @@ viewCloseEditorButton isEditingProgram =
       ( styles.button
       ++ [ E.htmlAttribute <| Html.Attributes.style "position" "fixed"
       , E.htmlAttribute <| Html.Attributes.style "bottom" "10px"
-      , E.htmlAttribute <| Html.Attributes.style "left" "calc(15vw - 20px)"
+      , E.htmlAttribute <| Html.Attributes.style "left" "0px"
       ]
       )
       { onPress =
         Just StopEditingProgram
       , label =
-        E.text "X"
+        E.text "Save and Close"
       }
   else
     E.none
@@ -388,7 +389,10 @@ viewStepControl computer =
     { onPress =
       Just StepComputer
     , label =
-      E.text ">"
+      E.html
+        (FeatherIcons.chevronRight
+        |> FeatherIcons.toHtml []
+        )
     }
 
 
@@ -398,7 +402,10 @@ viewEditButton computer =
     { onPress =
       Just StartEditingProgram
     , label =
-      E.text "Edit"
+      E.html
+        (FeatherIcons.edit
+        |> FeatherIcons.toHtml []
+        )
     }
 
 
