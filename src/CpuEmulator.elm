@@ -10,6 +10,7 @@ import Html.Attributes
 import Browser
 import Browser.Dom
 import Task
+import Time
 import Element as E
 import Element.Input as Input
 import Element.Background as Background
@@ -34,11 +35,14 @@ type alias Model =
   , assemblerError : Maybe String
   , isEditingProgram : Bool
   , program : String
+  , isRunningComputer : Bool
   }
 
 
 type Msg
-  = StepComputer
+  = StepComputer Time.Posix
+  | StartRunningComputer
+  | StopRunningComputer
   | StartEditingInstruction Int
   | EditInstruction Int String
   | StopEditingInstruction Int
@@ -123,6 +127,8 @@ init _ =
     False
   , program =
     ""
+  , isRunningComputer =
+    False
   }
   , Cmd.none
   )
@@ -169,7 +175,8 @@ view model =
           [ viewRegister "PC" model.computer.pc
           , E.row
             [ E.spacing 20 ]
-            [ viewStepControl model.computer
+            [ viewSingleStepButton
+            , viewRunButton model.isRunningComputer
             , viewEditButton model.computer
             ]
           , viewAssemblerErrorMessage model.computer.error
@@ -374,14 +381,37 @@ viewRam model =
       }
     ]
 
-viewStepControl : Computer -> E.Element Msg
-viewStepControl computer =
+viewSingleStepButton : E.Element Msg
+viewSingleStepButton =
   Input.button styles.button
     { onPress =
-      Just StepComputer
+      Just <| StepComputer <| Time.millisToPosix 0
     , label =
       E.html
         (FeatherIcons.chevronRight
+        |> FeatherIcons.toHtml []
+        )
+    }
+
+
+viewRunButton : Bool -> E.Element Msg
+viewRunButton isRunningComputer =
+  let
+    _ = Debug.log "AL -> isRunningComputer" <| isRunningComputer
+  in
+  Input.button styles.button
+    { onPress =
+      if isRunningComputer then
+        Just StopRunningComputer
+      else
+        Just StartRunningComputer
+    , label =
+      E.html
+        ( ( if isRunningComputer then
+            FeatherIcons.pause
+          else
+            FeatherIcons.chevronsRight
+        )
         |> FeatherIcons.toHtml []
         )
     }
@@ -418,13 +448,14 @@ viewAssemblerErrorMessage errorMessage =
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
-    StepComputer ->
-      ({ model
-        | computer =
-          step model.computer
-      }
-      , Cmd.none
-      )
+    StepComputer _ ->
+      stepComputer model
+
+    StartRunningComputer ->
+      startRunningComputer model
+
+    StopRunningComputer ->
+      stopRunningComputer model
 
     StartEditingInstruction index ->
       startEditingInstruction index model
@@ -455,6 +486,36 @@ update msg model =
 
     NoOp ->
       (model, Cmd.none)
+
+
+stepComputer : Model -> (Model, Cmd Msg)
+stepComputer model =
+  ({ model
+    | computer =
+      step model.computer
+  }
+  , Cmd.none
+  )
+
+
+startRunningComputer : Model -> (Model, Cmd Msg)
+startRunningComputer model =
+  ({ model
+    | isRunningComputer =
+      True
+  }
+  , Cmd.none
+  )
+
+
+stopRunningComputer : Model -> (Model, Cmd Msg)
+stopRunningComputer model =
+  ({ model
+    | isRunningComputer =
+      False
+  }
+  , Cmd.none
+  )
 
 
 startEditingRam : Int -> Model -> (Model, Cmd Msg)
@@ -850,7 +911,13 @@ moveProgramCounter jumpBits computationResult computer =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  editProgramPort EditProgram
+  Sub.batch
+    [ editProgramPort EditProgram
+    , if model.isRunningComputer then
+      Time.every 10 StepComputer
+    else
+      Sub.none
+    ]
 
 
 fetchFromMemory : Int -> Memory -> Int
