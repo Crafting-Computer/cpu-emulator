@@ -681,8 +681,34 @@ stopEditingProgram model =
 
 stopEditingInstruction : Int -> Model -> (Model, Cmd Msg)
 stopEditingInstruction index model =
+  let
+    prevComputer =
+      model.computer
+
+    nextComputer =
+      case Array.get prevComputer.pc prevComputer.rom of
+        Just instructionStr ->
+          case Assembler.assembleInstruction prevComputer.pc instructionStr of
+            Err err ->
+              { prevComputer
+                | error =
+                  Just <| (prevComputer.pc, err)
+              }
+            
+            Ok _ ->
+              { prevComputer
+                | error =
+                  Nothing
+              }
+
+        Nothing ->
+          prevComputer
+
+  in  
   ({ model
-    | editingInstructionIndex =
+    | computer =
+      nextComputer
+    , editingInstructionIndex =
       Nothing
   }
   , Cmd.none
