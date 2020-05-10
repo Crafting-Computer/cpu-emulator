@@ -502,12 +502,19 @@ editProgram newProgram model =
   in
   case result of
     Ok instructions ->
+      let
+        updatedPartOfRom =
+          Array.fromList <|
+            List.map Assembler.instructionToString instructions
+        
+        restOfOldRom =
+          Array.slice (Array.length updatedPartOfRom) (Array.length oldComputer.rom) oldComputer.rom
+      in
       ({ model
         | computer =
           { oldComputer
             | rom =
-              Array.fromList <|
-              List.map Assembler.instructionToString instructions
+              Array.append updatedPartOfRom restOfOldRom
           }
       }
       , clearAssemblerErrorPort ()
