@@ -4,12 +4,127 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CPU Emulator</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/editor/editor.main.css">
 </head>
 <body>
+  <div id="editor" style="width: 30vw; height: 92vh; border: grey 1px solid; margin: 0 20px; position: fixed; top: -100vh; z-index: 9999;"></div>
   <main></main>
+  <script>var require = { paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/' } };</script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/loader.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/editor/editor.main.nls.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/editor/editor.main.min.js"></script>
   <script src="./elm.js"></script>
   <script>
-    var app = Elm.CpuEmulator.init({ node: document.querySelector("main") })
+    /////////////////////////////////// language support for assembly ////////////////////////////////
+    // Register a new language
+    monaco.languages.register({ id: 'asm', extensions: [ '.asm' ] });
+
+    // Register a tokens provider for the language
+    monaco.languages.setMonarchTokensProvider('asm', {
+      symbols: /[\-\=\+\&\|\!\@]+/,
+      keywords: [],
+      operators: [
+        '=', '-', '+', '&', '|', '!', '@'
+      ],
+      digits: /\d+(_+\d+)*/,
+      binarydigits: /[0-1]+(_+[0-1]+)*/,
+      hexdigits: /[[0-9a-fA-F]+(_+[0-9a-fA-F]+)*/,
+      tokenizer: {
+        root: [
+          { include: 'common' }
+        ],
+        common: [
+          // keyword and identifier
+          [/[a-zA-Z][a-zA-Z0-9_]*/, {
+            cases: {
+              '@keywords': 'keyword',
+              '@default': 'identifier'
+            }
+          }],
+
+          // number
+          [/0[xX](@hexdigits)n?/, 'number.hex'],
+          [/0[bB](@binarydigits)n?/, 'number.binary'],
+          [/(@digits)n?/, 'number'],
+
+          // whitespace
+          { include: '@whitespace' },
+
+          // delimiters and operators
+          [/[()]/, '@brackets'],
+          [/!(?=([^=]|$))/, 'delimiter'],
+          [/@symbols/, {
+            cases: {
+              '@operators': 'delimiter',
+              '@default': ''
+            }
+          }],
+        ],
+        whitespace: [
+          [/[ \r\n]+/, ''],
+          [/\{\-/, 'comment', '@comment'],
+          [/\-\-.*$/, 'comment'],
+        ],
+        comment: [
+          [/[^\{\-]+/, 'comment'],
+          [/\-\}/, 'comment', '@pop'],
+          [/[\{\-]/, 'comment']
+        ],
+      }
+    });
+    monaco.languages.setLanguageConfiguration('asm', {
+      brackets: [
+        ['(', ')']
+      ],
+      comments: {
+        lineComment: '--',
+        blockComment: ['{-', '-}']
+      },
+      autoClosingPairs: [
+        { open: '(', close: ')' },
+      ],
+    });
+
+
+    /////////////////////////////// initialize monaco editor ///////////////////////////////
+
+    var editor = monaco.editor.create(document.getElementById("editor"), {
+      theme: "vs",
+      value: "",
+      language: 'asm'
+    });
+
+    /////////////////////////////////// initialize elm app /////////////////////////////////////////
+    var app = Elm.CpuEmulator.init({ node: document.querySelector("main") });
+
+    editor.onDidChangeModelContent(function(event) {
+      app.ports.editProgramPort.send(editor.getValue({ lineEnding : "\n"}));
+    });
+    
+    app.ports.showProgramEditorPort.subscribe(function() {
+      console.log("showProgramEditorPort");
+      document.getElementById("editor").style.top = "10px";
+    });
+
+    app.ports.hideProgramEditorPort.subscribe(function() {
+      document.getElementById("editor").style.top = "-100vh";
+    });
+
+    app.ports.showAssemblerErrorPort.subscribe(function([[row, col], errorMessage]) {
+      monaco.editor.setModelMarkers(editor.getModel(), 'Assembler Error', [{
+        startLineNumber: row,
+        startColumn: col,
+        endLineNumber: row,
+        endColumn: col + 1,
+        message: errorMessage,
+        severity: monaco.MarkerSeverity.Error
+      }]);
+    });
+
+    app.ports.clearAssemblerErrorPort.subscribe(function() {
+      monaco.editor.setModelMarkers(editor.getModel(), 'Assembler Error', []);
+    });
+
   </script>
 </body>
 </html>

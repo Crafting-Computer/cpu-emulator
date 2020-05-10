@@ -1,4 +1,4 @@
-module CpuEmulator exposing (main)
+port module CpuEmulator exposing (main)
 
 
 import Array exposing (Array)
@@ -19,9 +19,19 @@ import Element.Font as Font
 import Assembler
 
 
+port showProgramEditorPort : () -> Cmd msg
+port hideProgramEditorPort : () -> Cmd msg
+port editProgramPort : (String -> msg) -> Sub msg
+port showAssemblerErrorPort : ((Int, Int), String) -> Cmd msg
+port clearAssemblerErrorPort : () -> Cmd msg
+
+
 type alias Model =
   { computer : Computer
   , editingInstructionIndex : Maybe Int
+  , editingRamIndex : Maybe Int
+  , assemblerError : Maybe String
+  , isEditingProgram : Bool
   }
 
 
@@ -30,6 +40,12 @@ type Msg
   | StartEditingInstruction Int
   | EditInstruction Int String
   | StopEditingInstruction Int
+  | StartEditingProgram
+  | EditProgram String
+  | StopEditingProgram
+  | StartEditingRam Int
+  | EditRam Int String
+  | StopEditingRam Int
   | NoOp
 
 
@@ -109,6 +125,12 @@ init _ =
     }
   , editingInstructionIndex =
     Nothing
+  , editingRamIndex =
+    Nothing
+  , assemblerError =
+    Nothing
+  , isEditingProgram =
+    False
   }
   , Cmd.none
   )
@@ -133,7 +155,7 @@ view model =
         [ E.spacing 20
         , E.alignTop
         ]
-        [ viewRAM model.computer
+        [ viewRam model
         , E.column
           [ E.width E.fill
           , E.spacing 10
@@ -147,21 +169,45 @@ view model =
         [ E.spacing 20
         , E.alignTop
         ]
-        [ viewROM model
+        [ viewRom model
         , E.column
           [ E.width E.fill
           , E.spacing 10
           ]
           [ viewRegister "PC" model.computer.pc
-          , viewStepControl model.computer
+          , E.row
+            [ E.spacing 20 ]
+            [ viewStepControl model.computer
+            , viewEditButton model.computer
+            ]
           , viewAssemblerErrorMessage model.computer.error
           ]
         ]
+      , viewCloseEditorButton model.isEditingProgram
       ]
 
 
-viewROM : Model -> E.Element Msg
-viewROM model =
+viewCloseEditorButton : Bool -> E.Element Msg
+viewCloseEditorButton isEditingProgram =
+  if isEditingProgram then
+    Input.button
+      ( styles.button
+      ++ [ E.htmlAttribute <| Html.Attributes.style "position" "fixed"
+      , E.htmlAttribute <| Html.Attributes.style "bottom" "10px"
+      , E.htmlAttribute <| Html.Attributes.style "left" "calc(15vw - 20px)"
+      ]
+      )
+      { onPress =
+        Just StopEditingProgram
+      , label =
+        E.text "X"
+      }
+  else
+    E.none
+
+
+viewRom : Model -> E.Element Msg
+viewRom model =
   let
     instructionData =
       Array.toList <| Array.slice 0 28 model.computer.rom
@@ -251,11 +297,6 @@ viewROM model =
     ]
 
 
-viewRAM : Computer -> E.Element Msg
-viewRAM computer =
-  viewMemory "RAM" 0 computer.ram
-
-
 viewRegister : String -> Int -> E.Element Msg
 viewRegister name value =
   E.el
@@ -266,16 +307,16 @@ viewRegister name value =
   E.text <| name ++ " = " ++ String.fromInt value
 
 
-viewMemory : String -> Int -> Memory -> E.Element Msg
-viewMemory name highlightedAddress memory =
+viewRam : Model -> E.Element Msg
+viewRam model =
   let
     memoryData =
-      Array.toList <| Array.slice 0 28 memory
+      Array.toList <| Array.slice 0 28 model.computer.ram
   in
   E.column
     [ E.width <| E.px 200
     ] <|
-    [ E.text name
+    [ E.text "RAM"
     , E.indexedTable []
       { data = memoryData
       , columns =
@@ -292,20 +333,50 @@ viewMemory name highlightedAddress memory =
             , view =
                 \index cell ->
                   let
+                    commonStyle =
+                      [ E.paddingXY 10 0
+                      , Border.width 1
+                      , E.height <| E.px 22
+                      ]
+                    
                     cellStyle =
-                      if index == highlightedAddress then
-                        [ Background.color colors.lightGreen
+                      if index == 0 then
+                        commonStyle
+                        ++ [ Background.color colors.lightGreen
                         ]
                       else
-                        []
+                        commonStyle
+
+                    isEditing =
+                      case model.editingRamIndex of
+                        Nothing ->
+                          False
+                        
+                        Just editingIndex ->
+                          index == editingIndex
                   in
-                  E.el
-                  (cellStyle
-                  ++ [ E.paddingXY 10 0
-                  , Border.width 1
-                  ])
-                  <|
-                  E.text <| String.fromInt cell
+                  E.el cellStyle <|
+                  if isEditing then
+                    Input.text
+                      (cellStyle
+                      ++ [ Events.onLoseFocus <| StopEditingRam index
+                        , E.htmlAttribute <| Html.Attributes.id <| "ram" ++ String.fromInt index
+                      ])
+                      { onChange =
+                        EditRam index
+                      , text =
+                        String.fromInt cell
+                      , placeholder =
+                        Nothing
+                      , label =
+                        Input.labelHidden "edit ram"
+                      }
+                  else
+                    E.el
+                    [ Events.onClick <| StartEditingRam index
+                    , E.width E.fill
+                    ] <|
+                    E.text <| String.fromInt cell
             }
           ]
       }
@@ -318,6 +389,16 @@ viewStepControl computer =
       Just StepComputer
     , label =
       E.text ">"
+    }
+
+
+viewEditButton : Computer -> E.Element Msg
+viewEditButton computer =
+  Input.button styles.button
+    { onPress =
+      Just StartEditingProgram
+    , label =
+      E.text "Edit"
     }
 
 
@@ -356,8 +437,114 @@ update msg model =
     StopEditingInstruction index ->
       stopEditingInstruction index model
 
+    StartEditingProgram ->
+      startEditingProgram model
+
+    EditProgram newProgram ->
+      editProgram newProgram model
+
+    StopEditingProgram ->
+      stopEditingProgram model
+
+    StartEditingRam index ->
+      startEditingRam index model
+    
+    EditRam index newValue->
+      editRam index newValue model
+    
+    StopEditingRam index ->
+      stopEditingRam index model
+
     NoOp ->
       (model, Cmd.none)
+
+
+startEditingRam : Int -> Model -> (Model, Cmd Msg)
+startEditingRam index model =
+  ({ model
+    | editingRamIndex =
+      Just index
+  }
+  , Task.attempt (\_ -> NoOp) <| Browser.Dom.focus <| "ram" ++ String.fromInt index
+  )
+
+
+editRam : Int -> String -> Model -> (Model, Cmd Msg)
+editRam index newValue model =
+  let
+    oldComputer =
+      model.computer
+  in
+  ({ model
+    | computer =
+      { oldComputer
+        | ram =
+          storeToMemory index (Maybe.withDefault 0 <| String.toInt newValue) oldComputer.ram
+      }
+  }
+  , Cmd.none
+  )
+
+
+stopEditingRam : Int -> Model -> (Model, Cmd Msg)
+stopEditingRam index model =
+  ({ model
+    | editingRamIndex =
+      Nothing
+  }
+  , Cmd.none
+  )
+
+
+editProgram : String -> Model -> (Model, Cmd Msg)
+editProgram newProgram model =
+  let
+    oldComputer =
+      model.computer
+    
+    result =
+      Assembler.parseProgram newProgram
+  in
+  case result of
+    Ok instructions ->
+      ({ model
+        | computer =
+          { oldComputer
+            | rom =
+              Array.fromList <|
+              List.map Assembler.instructionToString instructions
+          }
+      }
+      , clearAssemblerErrorPort ()
+      )
+
+    Err error ->
+      ({ model
+        | assemblerError =
+          Just <| Tuple.second error
+      }
+      , showAssemblerErrorPort error
+      )
+
+
+startEditingProgram : Model -> (Model, Cmd Msg)
+startEditingProgram model =
+  ( { model
+    | isEditingProgram =
+      True
+  }
+  , showProgramEditorPort ()
+  )
+
+
+stopEditingProgram : Model -> (Model, Cmd Msg)
+stopEditingProgram model =
+  ( { model
+    | isEditingProgram =
+      False
+  }
+  , hideProgramEditorPort ()
+  )
 
 
 stopEditingInstruction : Int -> Model -> (Model, Cmd Msg)
@@ -648,7 +835,7 @@ moveProgramCounter jumpBits computationResult computer =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  Sub.none
+  editProgramPort EditProgram
 
 
 fetchFromMemory : Int -> Memory -> Int
