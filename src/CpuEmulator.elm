@@ -103,24 +103,12 @@ styles =
 
 init : () -> (Model, Cmd Msg)
 init _ =
-  let
-    program =
-      [ "@2"
-      , "D=A-2"
-      , "@3"
-      , "D=D+A"
-      , "@0"
-      , "M=D"
-      ]
-  in
   ( { computer =
     { aRegister = 0
     , dRegister = 0
     , mRegister = 0
     , pc = 0
-    , rom = Array.append
-      (Array.fromList program)
-      (Array.repeat (2 ^ 20 - List.length program) "")
+    , rom = Array.repeat (2 ^ 20) ""
     , ram = Array.repeat (2 ^ 21) 0
     , error = Nothing
     }
