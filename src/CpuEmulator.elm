@@ -12,6 +12,7 @@ import Element.Input as Input
 import Element.Background as Background
 import Element.Border as Border
 import Element.Events as Events
+import Element.Font as Font
 import Assembler
 
 
@@ -112,6 +113,10 @@ view model =
     [ E.width E.fill
     , E.height E.fill
     , E.padding 20
+    , Font.family
+      [ Font.typeface "Roboto Mono"
+      , Font.monospace
+      ]
     ] <|
     E.row
       [ E.width E.fill
@@ -316,11 +321,13 @@ viewAssemblerErrorMessage errorMessage =
     Nothing ->
       E.none
     
-    Just (_, msg) ->
+    Just (location, msg) ->
       E.el
       [ E.width <| E.px 30 -- used to make sure other elements' widths are not expanded
+      , Font.letterSpacing -1
       ]
-      <| E.text <| "❌ " ++ msg
+      <| E.text <| "⚠️ I got stuck while assembling line " ++ String.fromInt location ++ ":\n"
+        ++ msg
 
 
 update : Msg -> Model -> Model
