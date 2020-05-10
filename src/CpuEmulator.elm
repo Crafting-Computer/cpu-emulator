@@ -43,6 +43,7 @@ type Msg
   = StepComputer Time.Posix
   | StartRunningComputer
   | StopRunningComputer
+  | ResetComputer
   | StartEditingInstruction Int
   | EditInstruction Int String
   | StopEditingInstruction Int
@@ -171,15 +172,19 @@ view model =
         , E.column
           [ E.width E.fill
           , E.spacing 10
+          , E.onRight <| viewAssemblerErrorMessage model.computer.error
           ]
           [ viewRegister "PC" model.computer.pc
           , E.row
             [ E.spacing 20 ]
             [ viewSingleStepButton
             , viewRunButton model.isRunningComputer
-            , viewEditButton model.computer
+            , viewResetButton
             ]
-          , viewAssemblerErrorMessage model.computer.error
+          , E.row
+            [ E.spacing 20 ]
+            [ viewEditButton model.computer
+            ]
           ]
         ]
       , viewCloseEditorButton model.isEditingProgram
@@ -396,9 +401,6 @@ viewSingleStepButton =
 
 viewRunButton : Bool -> E.Element Msg
 viewRunButton isRunningComputer =
-  let
-    _ = Debug.log "AL -> isRunningComputer" <| isRunningComputer
-  in
   Input.button styles.button
     { onPress =
       if isRunningComputer then
@@ -412,6 +414,19 @@ viewRunButton isRunningComputer =
           else
             FeatherIcons.chevronsRight
         )
+        |> FeatherIcons.toHtml []
+        )
+    }
+
+
+viewResetButton : E.Element Msg
+viewResetButton =
+  Input.button styles.button
+    { onPress =
+      Just ResetComputer
+    , label =
+      E.html
+        (FeatherIcons.chevronsLeft
         |> FeatherIcons.toHtml []
         )
     }
@@ -438,11 +453,30 @@ viewAssemblerErrorMessage errorMessage =
     
     Just (location, msg) ->
       E.el
-      [ E.width <| E.px 30 -- used to make sure other elements' widths are not expanded
+      [ E.paddingEach
+        { left =
+          20
+        , right =
+          0
+        , top =
+          0
+        , bottom =
+          0
+        }
+      -- , E.width <| E.px 30 -- used to make sure other elements' widths are not expanded
       , Font.letterSpacing -1
       ]
-      <| E.text <| "⚠️ I got stuck while assembling line " ++ String.fromInt location ++ ":\n"
-        ++ msg
+      <| E.html <|
+        Html.pre
+        [ Html.Attributes.style "white-space" "pre-wrap"
+        , Html.Attributes.style "width" "50vw"
+        , Html.Attributes.style "margin" "0"
+        , Html.Attributes.style "line-height" "1.2em"
+        ]
+        [ Html.text <|
+          "⚠️ I got stuck while assembling line " ++ String.fromInt location ++ ":\n"
+          ++ msg
+        ]
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -456,6 +490,9 @@ update msg model =
 
     StopRunningComputer ->
       stopRunningComputer model
+
+    ResetComputer ->
+      resetComputer model
 
     StartEditingInstruction index ->
       startEditingInstruction index model
@@ -486,6 +523,25 @@ update msg model =
 
     NoOp ->
       (model, Cmd.none)
+
+
+resetComputer : Model -> (Model, Cmd Msg)
+resetComputer model =
+  let
+    oldComputer =
+      model.computer
+  in
+  ({ model
+    | computer =
+      { oldComputer
+        | pc =
+          0
+      }
+    , isRunningComputer =
+      False
+  }
+  , Cmd.none
+  )
 
 
 stepComputer : Model -> (Model, Cmd Msg)
