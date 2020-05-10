@@ -33,6 +33,7 @@ type alias Model =
   , editingRamIndex : Maybe Int
   , assemblerError : Maybe String
   , isEditingProgram : Bool
+  , program : String
   }
 
 
@@ -120,6 +121,8 @@ init _ =
     Nothing
   , isEditingProgram =
     False
+  , program =
+    ""
   }
   , Cmd.none
   )
@@ -493,38 +496,22 @@ stopEditingRam index model =
 
 editProgram : String -> Model -> (Model, Cmd Msg)
 editProgram newProgram model =
-  let
-    oldComputer =
-      model.computer
-    
-    result =
-      Assembler.parseProgram newProgram
-  in
-  case result of
-    Ok instructions ->
-      let
-        updatedPartOfRom =
-          Array.fromList <|
-            List.map Assembler.instructionToString instructions
-        
-        restOfOldRom =
-          Array.slice (Array.length updatedPartOfRom) (Array.length oldComputer.rom) oldComputer.rom
-      in
-      ({ model
-        | computer =
-          { oldComputer
-            | rom =
-              Array.append updatedPartOfRom restOfOldRom
-          }
-      }
+  case Assembler.parseProgram newProgram of
+    Ok _ ->
+      ( { model
+        | program =
+          newProgram
+        }
       , clearAssemblerErrorPort ()
       )
 
     Err error ->
-      ({ model
-        | assemblerError =
+      ( { model
+        | program =
+          newProgram
+        , assemblerError =
           Just <| Tuple.second error
-      }
+        }
       , showAssemblerErrorPort error
       )
 
@@ -541,12 +528,38 @@ startEditingProgram model =
 
 stopEditingProgram : Model -> (Model, Cmd Msg)
 stopEditingProgram model =
-  ( { model
-    | isEditingProgram =
-      False
-  }
-  , hideProgramEditorPort ()
-  )
+  case Assembler.parseProgram model.program of
+    Ok instructions ->
+      let
+        oldComputer =
+          model.computer
+
+        updatedPartOfRom =
+          Array.fromList <|
+            List.map Assembler.instructionToString instructions
+        
+        restOfOldRom =
+          Array.slice (Array.length updatedPartOfRom) (Array.length oldComputer.rom) oldComputer.rom
+      in
+      ({ model
+        | computer =
+          { oldComputer
+            | rom =
+              Array.append updatedPartOfRom restOfOldRom
+          }
+        , isEditingProgram =
+          False
+      }
+      , hideProgramEditorPort ()
+      )
+    
+    Err _ ->
+      ({ model
+        | isEditingProgram =
+          False
+      }
+      , hideProgramEditorPort ()
+      )
 
 
 stopEditingInstruction : Int -> Model -> (Model, Cmd Msg)
