@@ -6,7 +6,10 @@ import Binary
 import Bitwise
 import List.Extra
 import Html exposing (Html)
+import Html.Attributes
 import Browser
+import Browser.Dom
+import Task
 import Element as E
 import Element.Input as Input
 import Element.Background as Background
@@ -27,14 +30,16 @@ type Msg
   | StartEditingInstruction Int
   | EditInstruction Int String
   | StopEditingInstruction Int
+  | NoOp
 
 
 main : Program () Model Msg
 main =
-  Browser.sandbox
+  Browser.element
     { init = init
     , view = view
     , update = update
+    , subscriptions = subscriptions
     }
 
 
@@ -79,8 +84,8 @@ styles =
   }
 
 
-init : Model
-init =
+init : () -> (Model, Cmd Msg)
+init _ =
   let
     program =
       [ "@2"
@@ -91,7 +96,7 @@ init =
       , "M=D"
       ]
   in
-  { computer =
+  ( { computer =
     { aRegister = 0
     , dRegister = 0
     , mRegister = 0
@@ -105,6 +110,8 @@ init =
   , editingInstructionIndex =
     Nothing
   }
+  , Cmd.none
+  )
 
 
 view : Model -> Html Msg
@@ -221,6 +228,7 @@ viewROM model =
                     Input.text
                       (cellStyle
                       ++ [ Events.onLoseFocus <| StopEditingInstruction index
+                        , E.htmlAttribute <| Html.Attributes.id <| "instruction" ++ String.fromInt index
                       ])
                       { onChange =
                         EditInstruction index
@@ -305,14 +313,12 @@ viewMemory name highlightedAddress memory =
 
 viewStepControl : Computer -> E.Element Msg
 viewStepControl computer =
-  E.row []
-    [ Input.button styles.button
-      { onPress =
-        Just StepComputer
-      , label =
-        E.text ">"
-      }
-    ]
+  Input.button styles.button
+    { onPress =
+      Just StepComputer
+    , label =
+      E.text ">"
+    }
 
 
 viewAssemblerErrorMessage : Maybe (Int, String) -> E.Element Msg
@@ -330,14 +336,16 @@ viewAssemblerErrorMessage errorMessage =
         ++ msg
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
     StepComputer ->
-      { model
+      ({ model
         | computer =
           step model.computer
       }
+      , Cmd.none
+      )
 
     StartEditingInstruction index ->
       startEditingInstruction index model
@@ -348,36 +356,45 @@ update msg model =
     StopEditingInstruction index ->
       stopEditingInstruction index model
 
+    NoOp ->
+      (model, Cmd.none)
 
-stopEditingInstruction : Int -> Model -> Model
+
+stopEditingInstruction : Int -> Model -> (Model, Cmd Msg)
 stopEditingInstruction index model =
-  { model
+  ({ model
     | editingInstructionIndex =
       Nothing
   }
+  , Cmd.none
+  )
 
 
-editInstruction : Int -> String -> Model -> Model
+editInstruction : Int -> String -> Model -> (Model, Cmd Msg)
 editInstruction index newInstruction model =
   let
     oldComputer =
       model.computer
   in
-  { model
+  ({ model
     | computer =
       { oldComputer
         | rom =
           Array.set index newInstruction oldComputer.rom
       }
   }
+  , Cmd.none
+  )
 
 
-startEditingInstruction : Int -> Model -> Model
+startEditingInstruction : Int -> Model -> (Model, Cmd Msg)
 startEditingInstruction index model =
-  { model
+  ({ model
     | editingInstructionIndex =
       Just index
   }
+  , Task.attempt (\_ -> NoOp) <| Browser.Dom.focus <| "instruction" ++ String.fromInt index
+  )
 
 
 step : Computer -> Computer
@@ -627,6 +644,11 @@ moveProgramCounter jumpBits computationResult computer =
       | pc =
         computer.pc + 1
     }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+  Sub.none
 
 
 fetchFromMemory : Int -> Memory -> Int
