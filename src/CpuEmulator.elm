@@ -27,6 +27,7 @@ port hideProgramEditorPort : () -> Cmd msg
 port editProgramPort : (String -> msg) -> Sub msg
 port showAssemblerErrorPort : ((Int, Int), String) -> Cmd msg
 port clearAssemblerErrorPort : () -> Cmd msg
+port scrollIntoViewPort : String -> Cmd msg
 
 
 type alias Model =
@@ -278,6 +279,7 @@ viewRom model =
                       , Border.width 1
                       , E.height <| E.px 22
                       , E.width <| E.px 130
+                      , E.htmlAttribute <| Html.Attributes.id <| "instruction" ++ String.fromInt index
                       ]
 
                     cellStyle =
@@ -316,7 +318,6 @@ viewRom model =
                     Input.text
                       (cellStyle
                       ++ [ Events.onLoseFocus <| StopEditingInstruction index
-                        , E.htmlAttribute <| Html.Attributes.id <| "instruction" ++ String.fromInt index
                       ])
                       { onChange =
                         EditInstruction index
@@ -639,17 +640,21 @@ resetComputer model =
     , isRunningComputer =
       False
   }
-  , Cmd.none
+  , scrollIntoViewPort "instruction0"
   )
 
 
 stepComputer : Model -> (Model, Cmd Msg)
 stepComputer model =
+  let
+    instructionId =
+      "instruction" ++ String.fromInt model.computer.pc
+  in
   ({ model
     | computer =
       step model.computer
   }
-  , Cmd.none
+  , scrollIntoViewPort instructionId
   )
 
 
