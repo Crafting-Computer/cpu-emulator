@@ -9,6 +9,7 @@
 <body>
   <div id="editor" style="width: 30vw; height: 92vh; border: grey 1px solid; margin: 0 20px; position: fixed; top: -100vh; z-index: 9999;"></div>
   <main></main>
+  <canvas id="screen" width="1024px" height="512px" style="position: fixed; top: 20px; right: 20px; z-index: 9999; "></canvas>
   <script>var require = { paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/' } };</script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/loader.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/editor/editor.main.nls.min.js"></script>
@@ -97,9 +98,25 @@
     /////////////////////////////////// initialize elm app /////////////////////////////////////////
     var app = Elm.CpuEmulator.init({ node: document.querySelector("main") });
 
+    var screen = document.getElementById("screen").getContext('2d');
+
     editor.onDidChangeModelContent(function(event) {
       app.ports.editProgramPort.send(editor.getValue({ lineEnding : "\n"}));
     });
+
+    app.ports.updatePixelPort.subscribe(function([[x, y], colorInDecimal]) {
+      console.log(x, y);
+      screen.fillStyle = toCssColor(colorInDecimal);
+      screen.fillRect( x, y, 1, 1 );
+    });
+
+    function toCssColor(num) {
+      num >>>= 0;
+      var b = num & 0xFF,
+          g = (num & 0xFF00) >>> 8,
+          r = (num & 0xFF0000) >>> 16;
+      return "rgb(" + [r, g, b].join(",") + ")";
+    }
 
     app.ports.scrollIntoViewPort.subscribe(function(id) {
       console.log(id);

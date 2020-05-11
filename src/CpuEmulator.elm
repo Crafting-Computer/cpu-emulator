@@ -28,6 +28,7 @@ port editProgramPort : (String -> msg) -> Sub msg
 port showAssemblerErrorPort : ((Int, Int), String) -> Cmd msg
 port clearAssemblerErrorPort : () -> Cmd msg
 port scrollIntoViewPort : String -> Cmd msg
+port updatePixelPort : Pixel -> Cmd msg
 
 
 type alias Model =
@@ -84,7 +85,12 @@ type alias Computer =
   , ram : Array Int
   , rom : Array String
   , error : Maybe (Int, String)
+  , updatedPixel : Maybe Pixel
   }
+
+
+type alias Pixel =
+  ((Int, Int), Int)
 
 
 type alias Memory =
@@ -127,6 +133,7 @@ init _ =
     , rom = Array.repeat (2 ^ 20) ""
     , ram = Array.repeat (2 ^ 21) 0
     , error = Nothing
+    , updatedPixel = Nothing
     }
   , editingInstructionIndex =
     Nothing
@@ -654,7 +661,15 @@ stepComputer model =
     | computer =
       step model.computer
   }
-  , scrollIntoViewPort instructionId
+  , Cmd.batch
+    [ scrollIntoViewPort instructionId
+    , case model.computer.updatedPixel of
+      Nothing ->
+        Cmd.none
+      
+      Just pixel ->
+        updatePixelPort pixel
+    ]
   )
 
 
@@ -1057,6 +1072,27 @@ storeComputationResult destinationsBits result computer =
       newMRegister
     , ram =
       storeToMemory computer.aRegister newMRegister computer.ram
+    , updatedPixel =
+      if storeToMRegister then
+        if 2 ^ 20 <= computer.aRegister && computer.aRegister <= 2 ^ 20 + 2 ^ 19 then
+          let
+            width =
+              1024
+
+            offset =
+              computer.aRegister - 2 ^ 20
+            
+            x =
+              offset // width
+            
+            y =
+              modBy width offset
+          in
+          Just ((x, y), newMRegister)
+        else
+          Nothing
+      else
+        Nothing
   }
 
 
