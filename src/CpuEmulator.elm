@@ -957,21 +957,13 @@ step computer =
                   Nothing
               }
 
-        instructionBinary =
-          Binary.ensureSize 32 <| Binary.fromDecimal instruction
-        
-        instructionBits =
-          Binary.toBooleans <| instructionBinary
+        opCode =
+          getBit 31 instruction
       in
-      case instructionBits of
-        [] ->
-          computer1
-        
-        opCode :: _ ->
-          if not opCode then
-            stepAInstruction (Binary.toDecimal instructionBinary) computer1
-          else
-            stepCInstruction (List.drop 19 instructionBits) computer1
+      if not opCode then
+        stepAInstruction instruction computer1
+      else
+        stepCInstruction (dropBits 19 instruction) computer1
     
     Nothing ->
       computer
@@ -991,17 +983,17 @@ stepAInstruction number computer =
 
 -- 13 instruction bits in the order of
 -- computation, destinations, and jump
-stepCInstruction : List Bit -> Computer -> Computer
-stepCInstruction instructionBits computer =
+stepCInstruction : Int -> Computer -> Computer
+stepCInstruction instruction computer =
   let
     computationBits =
-      List.take 7 instructionBits
+      Bitwise.shiftRightZfBy 6 instruction -- take the first 7 bits
     
     destinationsBits =
-      List.take 3 <| List.drop 7 instructionBits
+      Bitwise.shiftRightZfBy 3 <| Bitwise.and 0x38 instruction -- take the next 3 bits
     
     jumpBits =
-      List.take 3 <| List.drop 10 instructionBits
+      Bitwise.and 0x7 instruction -- take the next 3 bits
     
     computationResult =
       compute computationBits computer
@@ -1010,12 +1002,9 @@ stepCInstruction instructionBits computer =
   storeComputationResult destinationsBits computationResult <|
   computer
 
-compute : List Bit -> Computer -> Int
+compute : Int -> Computer -> Int
 compute computationBits computer =
   let
-    computationStr =
-      String.join "" <| List.map boolToString <| computationBits
-    
     d =
       computer.dRegister
     
@@ -1025,100 +1014,128 @@ compute computationBits computer =
     m =
       computer.mRegister
   in
-  case computationStr of
-    "0101010" ->
+  case computationBits of
+    -- "0101010" ->
+    0x2A ->
       0
     
-    "0111111" ->
+    -- "0111111" ->
+    0x3F ->
       1
     
-    "0111010" ->
+    -- "0111010" ->
+    0x3A ->
       -1
     
-    "0001100" ->
+    -- "0001100" ->
+    0xC ->
       d
     
-    "0110000" ->
+    -- "0110000" ->
+    0x30 ->
       a
     
-    "0001101" ->
+    -- "0001101" ->
+    0xD ->
       Bitwise.complement d
     
-    "0110001" ->
+    -- "0110001" ->
+    0x31 ->
       Bitwise.complement a
     
-    "0001111" ->
+    -- "0001111" ->
+    0xF ->
       -d
     
-    "0110011" ->
+    -- "0110011" ->
+    0x33 ->
       -a
     
-    "0011111" ->
+    -- "0011111" ->
+    0x1F ->
       d + 1
     
-    "0110111" ->
+    -- "0110111" ->
+    0x37 ->
       a + 1
     
-    "0001110" ->
+    -- "0001110" ->
+    0xE ->
       d - 1
     
-    "0110010" ->
+    -- "0110010" ->
+    0x32 ->
       a - 1
     
-    "0000010" ->
+    -- "0000010" ->
+    0x2 ->
       d + a
 
-    "0010011" ->
+    -- "0010011" ->
+    0x13 ->
       d - a
     
-    "0000111" ->
+    -- "0000111" ->
+    0x7 ->
       a - d
     
-    "0000000" ->
+    -- "0000000" ->
+    0x0 ->
       Bitwise.and d a
     
-    "0010101" ->
+    -- "0010101" ->
+    0x15 ->
       Bitwise.or d a
     
-    "1110000" ->
+    -- "1110000" ->
+    0x70 ->
       m
 
-    "1110001" ->
+    -- "1110001" ->
+    0x71 ->
       Bitwise.complement m
     
-    "1110011" ->
+    -- "1110011" ->
+    0x73 ->
       -m
 
-    "1110111" ->
+    -- "1110111" ->
+    0x77 ->
       m + 1
     
-    "1110010" ->
+    -- "1110010" ->
+    0x72 ->
       m - 1
     
-    "1000010" ->
+    -- "1000010" ->
+    0x42 ->
       d + m
     
-    "1010011" ->
+    -- "1010011" ->
+    0x53 ->
       d - m
     
-    "1000111" ->
+    -- "1000111" ->
+    0x47 ->
       m - d
     
-    "1000000" ->
+    -- "1000000" ->
+    0x40 ->
       Bitwise.and d m
     
-    "1010101" ->
+    -- "1010101" ->
+    0x55 ->
       Bitwise.or d m
     
     _ ->
       0 -- invalid computation bits
 
 
-storeComputationResult : List Bit -> Int -> Computer -> Computer
+storeComputationResult : Int -> Int -> Computer -> Computer
 storeComputationResult destinationsBits result computer =
   let
     storeToARegister =
-      getBit 0 destinationsBits
+      getBit 2 destinationsBits
     
     newARegister =
       if storeToARegister then result else computer.aRegister
@@ -1130,7 +1147,7 @@ storeComputationResult destinationsBits result computer =
       if storeToDRegister then result else computer.dRegister
 
     storeToMRegister =
-      getBit 2 destinationsBits
+      getBit 0 destinationsBits
     
     newMRegister =
       if storeToMRegister then result else computer.mRegister
@@ -1168,7 +1185,7 @@ storeComputationResult destinationsBits result computer =
   }
 
 
-moveProgramCounter : List Bit -> Int -> Computer -> Computer
+moveProgramCounter : Int -> Int -> Computer -> Computer
 moveProgramCounter jumpBits computationResult computer =
   let
     zr =
@@ -1178,13 +1195,13 @@ moveProgramCounter jumpBits computationResult computer =
       computationResult < 0
     
     lt =
-      getBit 0 jumpBits
+      getBit 2 jumpBits
     
     eq =
       getBit 1 jumpBits
     
     gt =
-      getBit 2 jumpBits
+      getBit 0 jumpBits
 
     jump =
       (if lt then ng else False)
@@ -1224,11 +1241,20 @@ storeToMemory address value memory =
   Array.set address value memory
 
 
-getBit : Int -> List Bit -> Bit
+-- 0th index at the rightmost, least significant bit
+getBit : Int -> Int -> Bool
 getBit index bits =
-  Maybe.withDefault False <| List.Extra.getAt index bits
+  Bitwise.shiftRightBy index bits |>
+  Bitwise.and 1 |>
+  (\bit -> bit == 1)
 
 
-boolToString : Bool -> String
-boolToString b =
-  if b then "1" else "0"
+dropBits : Int -> Int -> Int
+dropBits dropAmount bits =
+  Bitwise.shiftLeftBy dropAmount bits |>
+  Bitwise.shiftRightZfBy dropAmount
+
+
+toBinaryString : Int -> String
+toBinaryString number =
+  String.join "" <| List.map String.fromInt <| Binary.toIntegers <| Binary.fromDecimal number
