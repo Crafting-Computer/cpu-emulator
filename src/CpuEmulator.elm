@@ -38,11 +38,13 @@ type alias Model =
   , assemblerError : Maybe String
   , isEditingProgram : Bool
   , program : String
+  , instructions : Array String
   , isRunningComputer : Bool
   , ramScroll : InfiniteScroll.Model Msg
   , ramDisplaySize : Int
   , romScroll : InfiniteScroll.Model Msg
   , romDisplaySize : Int
+  , isAnimated : Bool
   }
 
 
@@ -83,7 +85,7 @@ type alias Computer =
   , mRegister : Int
   , pc : Int
   , ram : Array Int
-  , rom : Array String
+  , rom : Array Int
   , error : Maybe (Int, String)
   , updatedPixel : Maybe Pixel
   }
@@ -130,7 +132,7 @@ init _ =
     , dRegister = 0
     , mRegister = 0
     , pc = 0
-    , rom = Array.repeat (2 ^ 20) ""
+    , rom = Array.repeat (2 ^ 20) 0
     , ram = Array.repeat (2 ^ 21) 0
     , error = Nothing
     , updatedPixel = Nothing
@@ -145,6 +147,8 @@ init _ =
     False
   , program =
     ""
+  , instructions =
+    Array.repeat (2 ^ 20) ""
   , isRunningComputer =
     False
   , ramScroll =
@@ -155,6 +159,8 @@ init _ =
     InfiniteScroll.init loadMoreRom
   , romDisplaySize =
     50
+  , isAnimated =
+    True
   }
   , Cmd.none
   )
@@ -199,9 +205,9 @@ view model =
           [ E.width E.fill
           , E.spacing 10
           ]
-          [ viewRegister "A" model.computer.aRegister
-          , viewRegister "D" model.computer.dRegister
-          , viewRegister "M" model.computer.mRegister
+          [ viewRegister "A" model.computer.aRegister model.isAnimated
+          , viewRegister "D" model.computer.dRegister model.isAnimated
+          , viewRegister "M" model.computer.mRegister model.isAnimated
           ]
         ]
       , E.column
@@ -214,7 +220,7 @@ view model =
           , E.spacing 10
           , E.onRight <| viewAssemblerErrorMessage model.computer.error
           ]
-          [ viewRegister "PC" model.computer.pc
+          [ viewRegister "PC" model.computer.pc model.isAnimated
           , E.row
             [ E.spacing 20 ]
             [ viewSingleStepButton
@@ -254,7 +260,7 @@ viewRom : Model -> E.Element Msg
 viewRom model =
   let
     instructionData =
-      Array.toList <| Array.slice 0 model.romDisplaySize model.computer.rom
+      Array.toList <| Array.slice 0 model.romDisplaySize model.instructions
   in
   E.column
     [ E.width <| E.px 200
@@ -290,7 +296,7 @@ viewRom model =
                       ]
 
                     cellStyle =
-                      ( if index == model.computer.pc then
+                      ( if model.isAnimated && index == model.computer.pc then
                           commonStyle
                           ++ [ Background.color colors.lightGreen
                           ]
@@ -347,14 +353,19 @@ viewRom model =
     ]
 
 
-viewRegister : String -> Int -> E.Element Msg
-viewRegister name value =
+viewRegister : String -> Int -> Bool -> E.Element Msg
+viewRegister name value isAnimated =
   E.el
   [ Border.width 2
   , E.width E.fill
   , E.padding 5
   ] <|
-  E.text <| name ++ " = " ++ String.fromInt value
+  E.text <| name ++ " = "
+  ++ ( if isAnimated then
+    String.fromInt value
+  else
+    "-"
+  )
 
 
 viewRam : Model -> E.Element Msg
@@ -433,7 +444,11 @@ viewRam model =
                     [ Events.onClick <| StartEditingRam index
                     , E.width E.fill
                     ] <|
-                    E.text <| String.fromInt cell
+                    E.text <|
+                    if model.isAnimated then
+                      String.fromInt cell
+                    else
+                      "-"
             }
           ]
       }
@@ -662,7 +677,10 @@ stepComputer model =
       step model.computer
   }
   , Cmd.batch
-    [ scrollIntoViewPort instructionId
+    [ if model.isAnimated then
+      scrollIntoViewPort instructionId
+    else
+      Cmd.none
     , case model.computer.updatedPixel of
       Nothing ->
         Cmd.none
@@ -678,6 +696,8 @@ startRunningComputer model =
   ({ model
     | isRunningComputer =
       True
+    , isAnimated =
+      False
   }
   , Cmd.none
   )
@@ -688,6 +708,8 @@ stopRunningComputer model =
   ({ model
     | isRunningComputer =
       False
+    , isAnimated =
+      True
   }
   , Cmd.none
   )
@@ -770,18 +792,33 @@ stopEditingProgram model =
         oldComputer =
           model.computer
 
-        updatedPartOfRom =
+        updatedPartOfInstructions =
           Array.fromList <|
             List.map Assembler.instructionToString instructions
         
+        restOfOldInstructions =
+          Array.slice (Array.length updatedPartOfInstructions) (Array.length model.instructions) model.instructions
+        
+        nextInstructions =
+          Array.append updatedPartOfInstructions restOfOldInstructions
+
+        updatedPartOfRom =
+          Array.fromList <|
+            Assembler.emitProgram instructions
+        
         restOfOldRom =
           Array.slice (Array.length updatedPartOfRom) (Array.length oldComputer.rom) oldComputer.rom
+        
+        nextRom =
+          Array.append updatedPartOfRom restOfOldRom
       in
       ({ model
-        | computer =
+        | instructions =
+          nextInstructions
+        , computer =
           { oldComputer
             | rom =
-              Array.append updatedPartOfRom restOfOldRom
+              nextRom
           }
         , isEditingProgram =
           False
@@ -798,6 +835,23 @@ stopEditingProgram model =
       )
 
 
+-- updateInstructionsAndRom : List String -> Model -> Model
+-- updateInstructionsAndRom newInstructions model =
+--   let
+--     oldComputer =
+--       model.computer
+--   in
+--   { model
+--     | instructions =
+--       nextInstructions
+--     , computer =
+--     { oldComputer
+--       | rom =
+        
+--     }
+--   }
+
+
 stopEditingInstruction : Int -> Model -> (Model, Cmd Msg)
 stopEditingInstruction index model =
   let
@@ -805,7 +859,7 @@ stopEditingInstruction index model =
       model.computer
 
     nextComputer =
-      case Array.get prevComputer.pc prevComputer.rom of
+      case Array.get prevComputer.pc model.instructions of
         Just instructionStr ->
           case Assembler.assembleInstruction prevComputer.pc instructionStr of
             Err err ->
@@ -836,16 +890,9 @@ stopEditingInstruction index model =
 
 editInstruction : Int -> String -> Model -> (Model, Cmd Msg)
 editInstruction index newInstruction model =
-  let
-    oldComputer =
-      model.computer
-  in
   ({ model
-    | computer =
-      { oldComputer
-        | rom =
-          Array.set index newInstruction oldComputer.rom
-      }
+    | instructions =
+      Array.set index newInstruction model.instructions
   }
   , Cmd.none
   )
@@ -864,42 +911,34 @@ startEditingInstruction index model =
 step : Computer -> Computer
 step computer =
   case Array.get computer.pc computer.rom of
-    Just instructionStr ->
-      case Assembler.assembleInstruction computer.pc instructionStr of
-        Err err ->
-          { computer
-            | error =
-              Just <| (computer.pc, err)
-          }
-        
-        Ok instruction ->
-          let
-            computer1 =
-              case computer.error of
-                Nothing ->
-                  computer
-                
-                Just _ ->
-                  { computer
-                    | error =
-                      Nothing
-                  }
+    Just instruction ->
+      let
+        computer1 =
+          case computer.error of
+            Nothing ->
+              computer
+            
+            Just _ ->
+              { computer
+                | error =
+                  Nothing
+              }
 
-            instructionBinary =
-              Binary.fromIntegers <| List.map (Maybe.withDefault 0 << String.toInt) <| String.split "" instruction
-            
-            instructionBits =
-              Binary.toBooleans <| instructionBinary
-          in
-          case instructionBits of
-            [] ->
-              computer1
-            
-            opCode :: _ ->
-              if not opCode then
-                stepAInstruction (Binary.toDecimal instructionBinary) computer1
-              else
-                stepCInstruction (List.drop 19 instructionBits) computer1
+        instructionBinary =
+          Binary.ensureSize 32 <| Binary.fromDecimal instruction
+        
+        instructionBits =
+          Binary.toBooleans <| instructionBinary
+      in
+      case instructionBits of
+        [] ->
+          computer1
+        
+        opCode :: _ ->
+          if not opCode then
+            stepAInstruction (Binary.toDecimal instructionBinary) computer1
+          else
+            stepCInstruction (List.drop 19 instructionBits) computer1
     
     Nothing ->
       computer
@@ -1136,7 +1175,7 @@ subscriptions model =
   Sub.batch
     [ editProgramPort EditProgram
     , if model.isRunningComputer then
-      Time.every 10 StepComputer
+      Time.every 1 StepComputer
     else
       Sub.none
     ]
