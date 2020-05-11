@@ -133,8 +133,8 @@ init _ =
     , dRegister = 0
     , mRegister = 0
     , pc = 0
-    , rom = Array.repeat (2 ^ 18) 0
-    , ram = Array.repeat (2 ^ 18) 0
+    , rom = Array.repeat (2 ^ 16) 0
+    , ram = Array.repeat (2 ^ 16) 0
     , error = Nothing
     , updatedPixels = []
     }
@@ -149,7 +149,7 @@ init _ =
   , program =
     ""
   , instructions =
-    Array.repeat (2 ^ 18) ""
+    Array.repeat (2 ^ 16) ""
   , isRunningComputer =
     False
   , ramScroll =
@@ -1169,13 +1169,13 @@ storeComputationResult destinationsBits result computer =
       storeToMemory computer.aRegister newMRegister computer.ram
     , updatedPixels =
       if storeToMRegister then
-        if 2 ^ 18 <= computer.aRegister && computer.aRegister <= 2 ^ 18 + 2 ^ 17 // 4 then
+        if 2 ^ 16 <= computer.aRegister && computer.aRegister <= 2 ^ 16 + 2 ^ 15 then
           let
             width =
               512 // 4
 
             offset =
-              computer.aRegister - 2 ^ 18
+              computer.aRegister - 2 ^ 16
             
             x =
               modBy width offset
