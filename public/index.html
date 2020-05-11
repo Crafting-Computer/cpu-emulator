@@ -104,10 +104,11 @@
       app.ports.editProgramPort.send(editor.getValue({ lineEnding : "\n"}));
     });
 
-    app.ports.updatePixelPort.subscribe(function([[x, y], colorInDecimal]) {
-      console.log(x, y);
-      screen.fillStyle = toCssColor(colorInDecimal);
-      screen.fillRect( x, y, 1, 1 );
+    app.ports.updatePixelsPort.subscribe(function(pixels) {
+      pixels.forEach(function([[x, y], colorInDecimal]) {
+        screen.fillStyle = toCssColor(colorInDecimal);
+        screen.fillRect( x, y, 1, 1 );
+      })
     });
 
     function toCssColor(num) {
@@ -119,13 +120,11 @@
     }
 
     app.ports.scrollIntoViewPort.subscribe(function(id) {
-      console.log(id);
       var element = document.getElementById(id);
       element.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"});
     });
     
     app.ports.showProgramEditorPort.subscribe(function() {
-      console.log("showProgramEditorPort");
       document.getElementById("editor").style.top = "10px";
       editor.focus();
     });
