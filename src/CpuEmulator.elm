@@ -28,7 +28,7 @@ port editProgramPort : (String -> msg) -> Sub msg
 port showAssemblerErrorPort : ((Int, Int), String) -> Cmd msg
 port clearAssemblerErrorPort : () -> Cmd msg
 port scrollIntoViewPort : String -> Cmd msg
-port updatePixelPort : Pixel -> Cmd msg
+port updatePixelsPort : List Pixel -> Cmd msg
 
 
 type alias Model =
@@ -49,7 +49,8 @@ type alias Model =
 
 
 type Msg
-  = StepComputer Time.Posix
+  = StepComputerOneFrame Time.Posix
+  | StepComputer
   | StartRunningComputer
   | StopRunningComputer
   | ResetComputer
@@ -87,7 +88,7 @@ type alias Computer =
   , ram : Array Int
   , rom : Array Int
   , error : Maybe (Int, String)
-  , updatedPixel : Maybe Pixel
+  , updatedPixels : List Pixel
   }
 
 
@@ -135,7 +136,7 @@ init _ =
     , rom = Array.repeat (2 ^ 20) 0
     , ram = Array.repeat (2 ^ 21) 0
     , error = Nothing
-    , updatedPixel = Nothing
+    , updatedPixels = []
     }
   , editingInstructionIndex =
     Nothing
@@ -484,7 +485,7 @@ viewSingleStepButton : E.Element Msg
 viewSingleStepButton =
   Input.button styles.button
     { onPress =
-      Just <| StepComputer <| Time.millisToPosix 0
+      Just <| StepComputer
     , label =
       E.html
         (FeatherIcons.chevronRight
@@ -576,8 +577,11 @@ viewAssemblerErrorMessage errorMessage =
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
-    StepComputer _ ->
+    StepComputer ->
       stepComputer model
+    
+    StepComputerOneFrame _ ->
+      stepComputerOneFrame model
 
     StartRunningComputer ->
       startRunningComputer model
@@ -681,14 +685,43 @@ stepComputer model =
       scrollIntoViewPort instructionId
     else
       Cmd.none
-    , case model.computer.updatedPixel of
-      Nothing ->
+    , case model.computer.updatedPixels of
+      [] ->
         Cmd.none
       
-      Just pixel ->
-        updatePixelPort pixel
+      pixels ->
+        updatePixelsPort <| List.reverse pixels
     ]
   )
+
+
+stepComputerOneFrame : Model -> (Model, Cmd Msg)
+stepComputerOneFrame model =
+  let
+    nextComputer =
+      stepComputerOneFrameHelper 10000 model.computer
+  in
+  ({ model
+    | computer =
+      nextComputer
+  }
+  , Cmd.batch
+    [ case nextComputer.updatedPixels of
+      [] ->
+        Cmd.none
+      
+      pixels ->
+        updatePixelsPort pixels
+    ]
+  )
+
+
+stepComputerOneFrameHelper : Int -> Computer -> Computer
+stepComputerOneFrameHelper numberOfInstructionsLeft computer =
+  if numberOfInstructionsLeft > 0 then
+    stepComputerOneFrameHelper (numberOfInstructionsLeft - 1) (step computer)
+  else
+    computer
 
 
 startRunningComputer : Model -> (Model, Cmd Msg)
@@ -1111,7 +1144,7 @@ storeComputationResult destinationsBits result computer =
       newMRegister
     , ram =
       storeToMemory computer.aRegister newMRegister computer.ram
-    , updatedPixel =
+    , updatedPixels =
       if storeToMRegister then
         if 2 ^ 20 <= computer.aRegister && computer.aRegister <= 2 ^ 20 + 2 ^ 19 then
           let
@@ -1127,11 +1160,11 @@ storeComputationResult destinationsBits result computer =
             y =
               modBy width offset
           in
-          Just ((x, y), newMRegister)
+          ((x, y), newMRegister) :: computer.updatedPixels
         else
-          Nothing
+          computer.updatedPixels
       else
-        Nothing
+        computer.updatedPixels
   }
 
 
@@ -1175,7 +1208,7 @@ subscriptions model =
   Sub.batch
     [ editProgramPort EditProgram
     , if model.isRunningComputer then
-      Time.every 1 StepComputer
+      Time.every 16 StepComputerOneFrame
     else
       Sub.none
     ]
