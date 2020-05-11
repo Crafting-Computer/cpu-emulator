@@ -9,8 +9,8 @@ import Html exposing (Html)
 import Html.Attributes
 import Browser
 import Browser.Dom
+import Browser.Events
 import Task
-import Time
 import Element as E
 import Element.Input as Input
 import Element.Background as Background
@@ -49,7 +49,7 @@ type alias Model =
 
 
 type Msg
-  = StepComputerOneFrame Time.Posix
+  = StepComputerOneFrame Float
   | StepComputer
   | StartRunningComputer
   | StopRunningComputer
@@ -133,8 +133,8 @@ init _ =
     , dRegister = 0
     , mRegister = 0
     , pc = 0
-    , rom = Array.repeat (2 ^ 20) 0
-    , ram = Array.repeat (2 ^ 21) 0
+    , rom = Array.repeat (2 ^ 18) 0
+    , ram = Array.repeat (2 ^ 18) 0
     , error = Nothing
     , updatedPixels = []
     }
@@ -149,7 +149,7 @@ init _ =
   , program =
     ""
   , instructions =
-    Array.repeat (2 ^ 20) ""
+    Array.repeat (2 ^ 18) ""
   , isRunningComputer =
     False
   , ramScroll =
@@ -580,8 +580,8 @@ update msg model =
     StepComputer ->
       stepComputer model
     
-    StepComputerOneFrame _ ->
-      stepComputerOneFrame model
+    StepComputerOneFrame time ->
+      stepComputerOneFrame time model
 
     StartRunningComputer ->
       startRunningComputer model
@@ -695,11 +695,17 @@ stepComputer model =
   )
 
 
-stepComputerOneFrame : Model -> (Model, Cmd Msg)
-stepComputerOneFrame model =
+stepComputerOneFrame : Float -> Model -> (Model, Cmd Msg)
+stepComputerOneFrame time model =
   let
+    timeToRun =
+      min time 1000
+    
+    steps =
+      ceiling ((timeToRun / 1000) * 2.2 * 256 * 1024)
+    
     nextComputer =
-      stepComputerOneFrameHelper 10000 model.computer
+      stepComputerOneFrameHelper steps model.computer
   in
   ({ model
     | computer =
@@ -1163,19 +1169,19 @@ storeComputationResult destinationsBits result computer =
       storeToMemory computer.aRegister newMRegister computer.ram
     , updatedPixels =
       if storeToMRegister then
-        if 2 ^ 20 <= computer.aRegister && computer.aRegister <= 2 ^ 20 + 2 ^ 19 then
+        if 2 ^ 18 <= computer.aRegister && computer.aRegister <= 2 ^ 18 + 2 ^ 17 // 4 then
           let
             width =
-              1024
+              512 // 4
 
             offset =
-              computer.aRegister - 2 ^ 20
+              computer.aRegister - 2 ^ 18
             
             x =
-              offset // width
-            
-            y =
               modBy width offset
+
+            y =
+              offset // width
           in
           ((x, y), newMRegister) :: computer.updatedPixels
         else
@@ -1225,7 +1231,7 @@ subscriptions model =
   Sub.batch
     [ editProgramPort EditProgram
     , if model.isRunningComputer then
-      Time.every 16 StepComputerOneFrame
+      Browser.Events.onAnimationFrameDelta StepComputerOneFrame
     else
       Sub.none
     ]

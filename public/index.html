@@ -9,7 +9,7 @@
 <body>
   <div id="editor" style="width: 30vw; height: 92vh; border: grey 1px solid; margin: 0 20px; position: fixed; top: -100vh; z-index: 9999;"></div>
   <main></main>
-  <canvas id="screen" width="1024px" height="512px" style="position: fixed; top: 20px; right: 20px; z-index: 9999; "></canvas>
+  <canvas id="screen" width="512px" height="256px" style="position: fixed; top: 20px; right: 20px; z-index: 9999; "></canvas>
   <script>var require = { paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/' } };</script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/loader.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.20.0/min/vs/editor/editor.main.nls.min.js"></script>
@@ -106,16 +106,32 @@
 
     app.ports.updatePixelsPort.subscribe(function(pixels) {
       pixels.forEach(function([[x, y], colorInDecimal]) {
-        screen.fillStyle = toCssColor(colorInDecimal);
-        screen.fillRect( x, y, 1, 1 );
+        screen.fillStyle = cssColorFrom8Bits(colorInDecimal & 0xFF000000 >>> 24);
+        screen.fillRect( x * 4, y, 1, 1 );
+
+        screen.fillStyle = cssColorFrom8Bits(colorInDecimal & 0x00FF0000 >>> 16);
+        screen.fillRect( x * 4 + 1, y, 1, 1 );
+
+        screen.fillStyle = cssColorFrom8Bits(colorInDecimal & 0x0000FF00 >>> 8);
+        screen.fillRect( x * 4 + 2, y, 1, 1 );
+
+        screen.fillStyle = cssColorFrom8Bits(colorInDecimal & 0x000000FF);
+        screen.fillRect( x * 4 + 3, y, 1, 1 );
       })
     });
 
-    function toCssColor(num) {
-      num >>>= 0;
-      var b = num & 0xFF,
-          g = (num & 0xFF00) >>> 8,
-          r = (num & 0xFF0000) >>> 16;
+    // function cssColorFrom24Bits(num) {
+    //   num >>>= 0;
+    //   var b = num & 0xFF,
+    //       g = (num & 0xFF00) >>> 8,
+    //       r = (num & 0xFF0000) >>> 16;
+    //   return "rgb(" + [r, g, b].join(",") + ")";
+    // }
+
+    function cssColorFrom8Bits(num) {
+      var r = (num >> 5) * 255 / 7;
+      var g = ((num >> 2) & 0x07) * 255 / 7;
+      var b = (num & 0x03) * 255 / 3;
       return "rgb(" + [r, g, b].join(",") + ")";
     }
 
