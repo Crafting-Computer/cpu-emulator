@@ -19,6 +19,7 @@ import Element.Events as Events
 import Element.Font as Font
 import FeatherIcons
 import Assembler
+import InfiniteScroll
 
 
 port showProgramEditorPort : () -> Cmd msg
@@ -36,6 +37,10 @@ type alias Model =
   , isEditingProgram : Bool
   , program : String
   , isRunningComputer : Bool
+  , ramScroll : InfiniteScroll.Model Msg
+  , ramDisplaySize : Int
+  , romScroll : InfiniteScroll.Model Msg
+  , romDisplaySize : Int
   }
 
 
@@ -53,6 +58,10 @@ type Msg
   | StartEditingRam Int
   | EditRam Int String
   | StopEditingRam Int
+  | RamScrollMsg InfiniteScroll.Msg
+  | LoadedMoreRam
+  | RomScrollMsg InfiniteScroll.Msg
+  | LoadedMoreRom
   | NoOp
 
 
@@ -130,9 +139,32 @@ init _ =
     ""
   , isRunningComputer =
     False
+  , ramScroll =
+    InfiniteScroll.init loadMoreRam
+  , ramDisplaySize =
+    50
+  , romScroll =
+    InfiniteScroll.init loadMoreRom
+  , romDisplaySize =
+    50
   }
   , Cmd.none
   )
+
+
+loadMoreRam : InfiniteScroll.Direction -> Cmd Msg
+loadMoreRam _ =
+  msgToCmd LoadedMoreRam
+
+
+loadMoreRom : InfiniteScroll.Direction -> Cmd Msg
+loadMoreRom _ =
+  msgToCmd LoadedMoreRom
+
+
+msgToCmd : msg -> Cmd msg
+msgToCmd x =
+    Task.perform identity (Task.succeed x)
 
 
 view : Model -> Html Msg
@@ -214,13 +246,18 @@ viewRom : Model -> E.Element Msg
 viewRom model =
   let
     instructionData =
-      Array.toList <| Array.slice 0 28 model.computer.rom
+      Array.toList <| Array.slice 0 model.romDisplaySize model.computer.rom
   in
   E.column
     [ E.width <| E.px 200
+    , E.htmlAttribute <| Html.Attributes.style "height" "640px"
     ] <|
     [ E.text "ROM"
-    , E.indexedTable []
+    , indexedTable
+      [ E.htmlAttribute <| InfiniteScroll.infiniteScroll RomScrollMsg
+      , E.htmlAttribute <| Html.Attributes.style "height" "640px"
+      , E.htmlAttribute <| Html.Attributes.style "overflow-y" "auto"
+      ]
       { data = instructionData
       , columns =
           [ { header = E.none
@@ -240,6 +277,7 @@ viewRom model =
                       [ E.paddingXY 10 0
                       , Border.width 1
                       , E.height <| E.px 22
+                      , E.width <| E.px 130
                       ]
 
                     cellStyle =
@@ -315,13 +353,18 @@ viewRam : Model -> E.Element Msg
 viewRam model =
   let
     memoryData =
-      Array.toList <| Array.slice 0 28 model.computer.ram
+      Array.toList <| Array.slice 0 model.ramDisplaySize model.computer.ram
   in
   E.column
     [ E.width <| E.px 200
+    , E.htmlAttribute <| Html.Attributes.style "height" "640px"
     ] <|
     [ E.text "RAM"
-    , E.indexedTable []
+    , indexedTable
+      [ E.htmlAttribute <| InfiniteScroll.infiniteScroll RamScrollMsg
+      , E.htmlAttribute <| Html.Attributes.style "height" "640px"
+      , E.htmlAttribute <| Html.Attributes.style "overflow-y" "auto"
+      ]
       { data = memoryData
       , columns =
           [ { header = E.none
@@ -341,6 +384,7 @@ viewRam model =
                       [ E.paddingXY 10 0
                       , Border.width 1
                       , E.height <| E.px 22
+                      , E.width <| E.px 130
                       ]
                     
                     cellStyle =
@@ -365,6 +409,7 @@ viewRam model =
                       (cellStyle
                       ++ [ Events.onLoseFocus <| StopEditingRam index
                         , E.htmlAttribute <| Html.Attributes.id <| "ram" ++ String.fromInt index
+                        , E.width E.fill
                       ])
                       { onChange =
                         EditRam index
@@ -385,6 +430,32 @@ viewRam model =
           ]
       }
     ]
+
+
+indexedTable :
+  List (E.Attribute Msg) ->
+  { data : List record
+  , columns : List (E.IndexedColumn record Msg)
+  } -> E.Element Msg
+indexedTable attributes { data, columns } =
+  E.column
+  ( attributes
+    ++ [ E.width E.fill ]
+  ) <|
+  List.indexedMap
+    (\index cell ->
+      E.row [ E.width E.fill ] <|
+      List.map
+      (\column ->
+        E.el
+        [ E.width <| column.width
+        ] <|
+        column.view index cell
+      )
+      columns
+    )
+    data
+
 
 viewSingleStepButton : E.Element Msg
 viewSingleStepButton =
@@ -520,6 +591,34 @@ update msg model =
     
     StopEditingRam index ->
       stopEditingRam index model
+
+    RamScrollMsg scrollMsg ->
+      let
+        ( nextRamScroll, cmd ) =
+          InfiniteScroll.update RamScrollMsg scrollMsg model.ramScroll
+      in
+      ( { model | ramScroll = nextRamScroll }, cmd )
+
+    LoadedMoreRam ->
+      let
+        nextRamScroll =
+          InfiniteScroll.stopLoading model.ramScroll
+      in
+      ( { model | ramScroll = nextRamScroll, ramDisplaySize = model.ramDisplaySize + 200 }, Cmd.none )
+
+    RomScrollMsg scrollMsg ->
+      let
+        ( nextRomScroll, cmd ) =
+          InfiniteScroll.update RomScrollMsg scrollMsg model.romScroll
+      in
+      ( { model | romScroll = nextRomScroll }, cmd )
+
+    LoadedMoreRom ->
+      let
+        nextRomScroll =
+          InfiniteScroll.stopLoading model.romScroll
+      in
+      ( { model | romScroll = nextRomScroll, romDisplaySize = model.romDisplaySize + 200 }, Cmd.none )
 
     NoOp ->
       (model, Cmd.none)
