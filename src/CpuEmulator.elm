@@ -134,7 +134,7 @@ init _ =
     , mRegister = 0
     , pc = 0
     , rom = Array.repeat (2 ^ 16) 0
-    , ram = Array.repeat (2 ^ 16) 0
+    , ram = Array.repeat (2 ^ 17) 0
     , error = Nothing
     , updatedPixels = []
     }
